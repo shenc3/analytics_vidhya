@@ -10,7 +10,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report, confusion_matrix, roc_curve
+from sklearn.metrics import precision_recall_curve, roc_curve, auc
 from sklearn.pipeline import Pipeline
+
 
 train = pd.read_csv('train.csv')
 test = pd.read_csv('test.csv')
@@ -66,6 +68,7 @@ unique_info = pd.concat([
 feats_obj = unique_info[unique_info['dtypes']=='object'].index.values
 feats_num = list(set(feats) - set(feats_obj))
 
+# 对分类变量进行one-hot编码，然后与连续变量构成新的数据集
 all_data2 = pd.concat([
     pd.get_dummies(all_data[feats_obj]), all_data[feats_num]
     ], axis=1)
@@ -80,9 +83,9 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.30, random_state=9)
 
 # 训练 RandomForest
-clf = RandomForestClassifier(n_estimators=200)
-clf.fit(X_train, y_train)
-y_pred1 = clf.predict(X_test)
+rf = RandomForestClassifier(n_estimators=200)
+rf.fit(X_train, y_train)
+y_pred1 = rf.predict_proba(X_test)[:, 1]
 
 # 评估结果
 print(classification_report(y_test, y_pred1))
@@ -125,16 +128,17 @@ array([[ 32,  33],
 # ---------------------------------------------------------
 # 正常逻辑回归
 # 训练
-clf = LogisticRegression(penalty='l2', C=1)
-clf.fit(X_train, y_train)
-y_pred2 = clf.predict(X_test)
+lg = LogisticRegression(penalty='l2', C=1)
+lg.fit(X_train, y_train)
+y_pred2 = lg.predict_proba(X_test)[:,1]
+
 
 # 评估结果
 print(classification_report(y_test, y_pred2))
 print(confusion_matrix(y_test, y_pred2))
 
 # 交叉验证的结果
-clf = LogisticRegression(penalty='l1', C=1)
+clf = LogisticRegression(penalty='l2', C=10)
 clf.fit(X, y)
 np.mean(cross_val_score(
   clf, X_train1, y,
@@ -187,3 +191,23 @@ confusion_matrix
 array([[ 25,  40],
        [  2, 118]], dtype=int64)
 '''
+
+# 画出分类器的PRC曲线
+def plot_prc(y_true, y_proba_pred, ax, legend):
+    precision, recall, threshold = precision_recall_curve(
+        y_true, y_proba_pred, pos_label=1, sample_weight=None)
+    ax.plot(recall, precision)
+    ax.set_xlabel('recall')
+    ax.set_ylabel('precision')
+    ax.set_title('Precision Recall Curve')
+    ax.legend([legend,])
+
+fig, ax = plt.subplots(figsize=(8, 8))
+plot_prc(y_test, y_pred1, ax, 'RandomForest')
+plot_prc(y_test, y_pred2, ax, 'LogisticRegression')
+ax.plot([0, 1], [0,1], '--')
+
+
+# 画出分类器的ROC曲线
+def plot_roc():
+    
