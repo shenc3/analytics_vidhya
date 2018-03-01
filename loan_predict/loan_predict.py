@@ -5,10 +5,11 @@ import numpy as np
 
 from sklearn.preprocessing import Imputer, LabelEncoder
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.model_selection import train_test_split, KFold, cross_val_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import classification_report, confusion_matrix, roc_curve
 from sklearn.pipeline import Pipeline
 
 train = pd.read_csv('train.csv')
@@ -79,13 +80,33 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.30, random_state=9)
 
 # 训练 RandomForest
-clf = RandomForestClassifier()
+clf = RandomForestClassifier(n_estimators=200)
 clf.fit(X_train, y_train)
 y_pred1 = clf.predict(X_test)
 
 # 评估结果
 print(classification_report(y_test, y_pred1))
 print(confusion_matrix(y_test, y_pred1))
+
+# 从随机森林中得到的特征重要性分数
+feats_imp = pd.DataFrame(np.hstack([
+  X_train.columns.values[:, None],
+  clf.feature_importances_[:, None]
+  ]), columns=['feature', 'score']).sort_values(by='score', ascending=False)
+
+feats2use = feats_imp.loc[feats_imp['score'] > 0.04, 'feature'].values
+X_train1 = X[feats2use]
+X_test1 = test_set[feats2use]
+
+'''
+clf = RandomForestClassifier(n_estimators=100, oob_score=True)
+clf.fit(X_train1, y)
+y_pred1 = clf.predict(X_test1)
+
+'''
+
+cross_val_score(clf, X, y)
+
 
 '''
 [out]:
@@ -101,26 +122,57 @@ array([[ 32,  33],
        [ 18, 102]], dtype=int64)
 '''
 
+# ---------------------------------------------------------
+# 正常逻辑回归
 # 训练
-feats_obj2 = list(set(all_data2.columns) - set(feats_num))  # 除了数值特征之外的特征
-pipeline = Pipeline([
-    ('scaler', StandardScaler())
-    ])  # pipeline用来预处理数据
-
-# 将数值特征标准化，之后再训练
-clf = LogisticRegression(penalty='l1', C=0.1)
-clf.fit(np.hstack([
-    X_train[feats_obj2].values,
-    pipeline.fit_transform(X_train[feats_num]
-    )]), y_train)
-y_pred2 = clf.predict(np.hstack([
-    X_test[feats_obj2].values,
-    pipeline.fit_transform(X_test[feats_num])
-    ]))
+clf = LogisticRegression(penalty='l2', C=1)
+clf.fit(X_train, y_train)
+y_pred2 = clf.predict(X_test)
 
 # 评估结果
 print(classification_report(y_test, y_pred2))
 print(confusion_matrix(y_test, y_pred2))
+
+# 交叉验证的结果
+clf = LogisticRegression(penalty='l1', C=1)
+clf.fit(X, y)
+np.mean(cross_val_score(
+  clf, X_train1, y,
+  cv=KFold(n_splits=5, shuffle=True, random_state=0)))
+
+submission = pd.DataFrame(
+  clf.predict(test_set),
+  index=test['Loan_ID'],
+  columns=['Loan_Status']).reset_index()
+submission['Loan_Status'] = submission['Loan_Status'].map(lambda x : {0:'N',1:'Y'}.get(x))
+
+submission.to_csv('submission.csv', index=False)
+
+# ---------------------------------------------------------
+# 将数值特征标准化，之后再训练
+'''
+feats_obj2 = list(set(all_data2.columns) - set(feats_num))  # 除了数值特征之外的特征
+pipeline = Pipeline([
+    ('scaler', StandardScaler())
+    ])  # pipeline用来预处理数据
+X_train2 = np.hstack([
+    X_train[feats_obj2].values,
+    pipeline.fit_transform(X_train[feats_num]
+    )])
+X_test2 = np.hstack([
+    X_test[feats_obj2].values,
+    pipeline.fit_transform(X_test[feats_num])
+    ])
+
+# 训练
+clf = LogisticRegression(penalty='l1', C=0.1)
+clf.fit(X_train2, y_train)
+y_pred2 = clf.predict(X_test2)
+
+# 评估结果
+print(classification_report(y_test, y_pred2))
+print(confusion_matrix(y_test, y_pred2))
+'''
 
 '''
 [out]:
